@@ -1,0 +1,381 @@
+import os
+import shelve
+import glob
+from pathlib import Path
+import openpyxl
+import pandas as pd
+from pandas import option_context
+from collections import OrderedDict
+import pyinputplus as pyip
+import numpy as np
+import datetime
+import matplotlib.pyplot as plt
+
+
+# Opening message
+def open_program():
+    print('Hi! This program is designed to output of funded clients.\n'
+          'It can filter by therapist and funder if desired, as well as filter out the unnecessary columns created when you export the excel sheet from JaneApp.\n')
+
+
+# Create shelf file if not exists
+def shelf_file():
+
+    with shelve.open('Therapist Info') as shelf:
+        d = pyip.inputFilepath("Please input the full path you'd like to save the file to, "
+                               "e.g. /Users/William/Downloads:\n")
+
+        # assign variables in shelf file
+        shelf['Directory'] = d
+        t = input("Please input the full therapist's name you'd like to filter by, "
+                  "e.g. William Smith: (this can be changed later) \n")
+        shelf['Therapist Name'] = t
+    print('Saved.\n')
+    # close shelf file
+    shelf.close()
+
+
+# Change therapist to filter by?
+def change_therapist():
+    shelf = shelve.open('Therapist Info')
+    t = input("Please input the full therapist's name you'd like to filter by, e.g. William Smith:\n")
+    shelf['Therapist Name'] = t
+    print('Saved.\n')
+    shelf.close()
+
+
+# Dummy check
+def dummy_check():
+
+    # ensure user knows file location
+    print("The excel file needs to be in the 'Downloads' folder on your computer.")
+    while True:
+        check = input("Please verify that you placed the file in the 'Downloads' "
+                      "folder on your computer by inputting 'y' for yes.\n")
+        if check != 'y':
+            print("PLEASE ENSURE THE EXCEL SPREADSHEET IS LOCATED IN THE 'DOWNLOADS' FOLDER")
+            continue
+        else:
+            break
+
+
+# Search pc for files with keywords to open
+def find_files():
+
+    # path
+    global downloads
+    downloads = str(Path.home() / "Downloads")
+
+    # find all Excel files in the "Downloads" folder with "Insurance" in the file name
+    file_paths = glob.glob(f"{downloads}//*Insurance*.xls*")
+
+    # add filenames and paths to dictionary
+    for path in file_paths:
+        file_name = os.path.basename(path)
+        file_dict[file_name] = path
+
+
+# Empty dictionary
+file_dict = {}
+
+
+# Ensuring file is correct one
+def select_file():
+
+    # add numbers next to files for selection
+    print("Please input the number of the file you would like to open:")
+    for i, file_name in enumerate(file_dict.keys()):
+        print(f"{i+1}. {file_name}")
+
+    # user selects file
+    selection = pyip.inputNum(min=1, max=len(file_dict.keys()), blank=False)
+
+    # match file number to filename
+    try:
+        global selected_file
+        selected_file = list(file_dict.values())[int(selection)-1]
+    except IndexError:
+        print('Invalid selection.')
+
+
+# Open file and create DF
+def open_file():
+
+    # update
+    print(f'Opening {selected_file}...\n')
+
+    # load the Excel file
+    pd.ExcelFile(f"{selected_file}")
+
+    # create data frame
+    global df1
+    df1 = pd.read_excel(f'{selected_file}')
+
+
+# Sort by funder?
+def sort_by_funder():
+
+    # collect insurance providers
+    keyword = 'Insurer'
+    ins = df1[keyword].unique()
+
+    # place keys in funder dictionary
+    funders = {}
+    for i in ins:
+        funders.setdefault(i, 0)
+
+    # sort dictionary alphabetically
+    ordered_funders = OrderedDict(sorted(funders.items()))
+
+    # assign value to each key
+    print('Please input the number of the insurer you would like to filter by.\n')
+    for i, ins in enumerate(ordered_funders.keys()):
+        print(f"{i + 1}. {ins}")
+
+    # user selects funder
+    number = pyip.inputNum(min=1, max=len(ordered_funders.keys()), blank=False)
+    print('\n')
+
+    try:
+        # match number to funder
+        chosen_funder = list(ordered_funders.keys())[int(number) - 1]
+
+        # update
+        print(f'Filtering by {chosen_funder}...\n')
+
+        # filter by funder
+        df1.drop(df1[df1['Insurer'] != chosen_funder].index, inplace=True)
+        return df1
+
+    except IndexError:
+        print('Invalid selection.')
+
+
+# Filter by therapist and case status
+def sort_by_therapist():
+
+    # open shelf file to retrieve therapist
+    shelf = shelve.open('Therapist Info')
+    therapist_name = str(shelf['Therapist Name'])
+    shelf.close()
+
+    # update
+    print(f'Filtering by {therapist_name}\n')
+
+    # delete other therapists
+    df1.drop(df1[df1['Policy #'] != therapist_name].index, inplace=True)
+
+    # delete closed cases
+    print('Filtering out closed cases...\n')
+    df1.drop(df1[df1['Status'] != 'Open'].index, inplace=True)
+
+    # print number of cases
+    case_number = len(df1.index)
+    print(f'There are {case_number} cases in this list.\n')
+
+
+# Sort by date
+def arrange_by_date():
+
+    # update
+    print('Filtering by date...')
+
+    # sort dates
+    global df2
+    df2 = df1.sort_values(by='End Date', ascending=True)
+
+
+# Tidying up file
+def prettify():
+
+    global df3
+
+    # hide unnecessary columns
+    df3 = df2.drop(df2.columns[[14, 13, 10, 7, 6, 3, 1, 0]], axis=1, inplace=True)
+
+    # Set number of decimals
+    df2.update(df2[['Number of Treatments']].astype(float))
+    df2.update(df2[['Number of Treatments']].applymap('{:,.0f}'.format))
+
+    # get rid of "NaN"
+    df3 = df2.replace(np.nan, '', regex=True)
+
+    return df3
+
+
+# Set conditions
+def conditions():
+
+    # get current date
+    global today
+    today = datetime.date.today()
+
+    # get dates coming within the next 2 weeks
+    global upcoming_dates
+    upcoming_dates = []
+
+    for i in range(-14, 14):
+        date_add = today + datetime.timedelta(days=i)
+        date = date_add.strftime("%Y-%m-%d")
+        upcoming_dates.append(date)
+
+    # remove str values from column
+    df3['Approved Visits'] = df3['Adjuster'].str.split(' ').str[0]
+
+    # convert columns to int
+    df3['Approved Visits'] = df3['Approved Visits'].astype('int')
+    df3['Number of Treatments'] = df3['Number of Treatments'].astype('int')
+
+    # get remaining visits
+    df3['Remaining Visits'] = df3['Approved Visits'] - df3['Number of Treatments']
+    df3['Remaining Visits'] = df3['Remaining Visits'].astype('int')
+
+    # get cases with <5 visits remaining
+    global limited_visits
+    limited_visits = []
+
+    for index, row in df3.iterrows():
+        if row['Remaining Visits'] < 6:
+            limited_visits.append(row['Remaining Visits'])
+
+    # Delete redundant column
+    df3.drop(df3.columns[[4]], axis=1, inplace=True)
+
+    return df3
+
+
+# Create table
+def render_table(data, col_width=None, row_height=0.6, header_color='#40466e', row_colors=['#f1f1f2', 'w'], edge_color='w', bbox=[0, 0, 1, 1], header_columns=0, ax=None, **kwargs):
+
+    # set parameters for table
+    if ax is None:
+        size = (np.array(data.shape[::-1]) + np.array([0, 1])) * np.array([col_width, row_height])
+        fig, ax = plt.subplots(figsize=size)
+        ax.axis('off')
+    mpl_table = ax.table(cellText=data.values, bbox=bbox, colLabels=data.columns, **kwargs)
+    mpl_table.auto_set_font_size(True)
+
+    # set colours
+    for k, cell in mpl_table._cells.items():
+        cell.set_edgecolor(edge_color)
+        if k[0] == 0 or k[1] < header_columns:
+            cell.set_text_props(weight='bold', color='w')
+            cell.set_facecolor(header_color)
+        else:
+            cell.set_facecolor(row_colors[k[0] % len(row_colors)])
+
+    # highlight cells based on date
+    for i in range(len(df3)):   # row position
+        for j in range(len(df3.columns)):   # column position
+            if df3.iloc[i, j] in upcoming_dates:
+                mpl_table.get_celld()[(i + 1, j)].set_text_props(weight='bold', color='r')
+
+    # highlight cells based on remaining visits
+    for i in range(len(df3)):
+        for j in range(len(df3.columns)):
+            if df3.iloc[i, j] in limited_visits:
+                mpl_table.get_celld()[(i + 1, j)].set_text_props(weight='bold', color='r')
+
+    # return data
+    return ax.get_figure(), ax
+
+
+# Change save location?
+def save_location():
+
+    # ask where to save file
+    d = pyip.inputFilepath("Please input the full path you'd like to save the file to, "
+                           "e.g. /Users/William/Downloads:\n")
+
+    # save shelf file
+    shelf = shelve.open('Therapist Info')
+    shelf['Directory'] = d
+    shelf.close()
+
+
+# Save Excel file, close shelfFile, and print done
+def save_file():
+
+    # open shelf file to retrieve desired directory
+    shelf = shelve.open('Therapist Info')
+    dirs = shelf['Directory']
+    therapist_name = shelf['Therapist Name']
+    shelf.close()
+
+    # path and name for image
+    image_name = str(f'{dirs}\\\\Funded Clients - {therapist_name} - {today}.png')
+
+    # create figure
+    fig, ax = render_table(df3, header_columns=0, col_width=2.0)
+
+    # save
+    fig.savefig(image_name)
+
+    # update
+    print(f'Done! File saved to {dirs}')
+
+
+# Define program
+def main():
+
+    open_program()
+
+    if not os.path.isfile('Therapist Info.dat'):
+        print("It looks like this is the first time you've opened this application, "
+              "so we're just going to set up a few things.\n")
+        shelf_file()
+
+    # open shelf file to retrieve therapist
+    shelf = shelve.open('Therapist Info')
+    therapist_name = str(shelf['Therapist Name'])
+    shelf.close()
+
+    while True:
+        ther_ques = input(f"Would you still like to filter by {therapist_name}?\n"
+                          "Please type 'y' for yes or 'n' for no:\n")
+        if ther_ques == 'n':
+            change_therapist()
+            break
+        elif ther_ques == 'y':
+            break
+        elif ther_ques != 'y' or 'n':
+            print('Invalid selection.')
+
+    dummy_check()
+    find_files()
+    select_file()
+    open_file()
+
+    while True:
+        fund_ques = input("Would you like to filter by funder?\nPlease type 'y' for yes or 'n' for no:\n")
+        if fund_ques == 'y':
+            sort_by_funder()
+            break
+        elif fund_ques == 'n':
+            break
+        elif fund_ques != 'y' or 'n':
+            print('Invalid selection.')
+
+    sort_by_therapist()
+    arrange_by_date()
+    prettify()
+    conditions()
+
+    while True:
+        dir_ques = input("Would you like to change where the file is saved to?\n"
+                         "Please type 'y' for yes or 'n' for no:\n")
+        if dir_ques == 'y':
+            save_location()
+        elif dir_ques == 'n':
+            break
+        elif dir_ques != 'y' or 'n':
+            print('Invalid selection.')
+
+    save_file()
+
+
+# Run program
+main()
+
+
+# Created by Amira Kadri
