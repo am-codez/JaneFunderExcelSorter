@@ -12,12 +12,6 @@ import datetime
 import matplotlib.pyplot as plt
 
 
-# Opening message
-def open_program():
-    print('Hi! This program is designed to output of funded clients.\n'
-          'It can filter by therapist and funder if desired, as well as filter out the unnecessary columns created when you export the excel sheet from JaneApp.\n')
-
-
 # Create shelf file if not exists
 def shelf_file():
 
@@ -98,7 +92,7 @@ def select_file():
         print('Invalid selection.')
 
 
-# Open file and create DF
+# Open file
 def open_file():
 
     # update
@@ -107,13 +101,9 @@ def open_file():
     # load the Excel file
     pd.ExcelFile(f"{selected_file}")
 
-    # create data frame
-    global df1
-    df1 = pd.read_excel(f'{selected_file}')
-
-
+    
 # Sort by funder?
-def sort_by_funder():
+def sort_by_funder(df1):
 
     # collect insurance providers
     keyword = 'Insurer'
@@ -152,7 +142,7 @@ def sort_by_funder():
 
 
 # Filter by therapist and case status
-def sort_by_therapist():
+def sort_by_therapist(df1):
 
     # open shelf file to retrieve therapist
     shelf = shelve.open('Therapist Info')
@@ -174,41 +164,8 @@ def sort_by_therapist():
     print(f'There are {case_number} cases in this list.\n')
 
 
-# Sort by date
-def arrange_by_date():
-
-    # update
-    print('Filtering by date...')
-
-    # sort dates
-    global df2
-    df2 = df1.sort_values(by='End Date', ascending=True)
-
-
-# Tidying up file
-def prettify():
-
-    global df3
-
-    # hide unnecessary columns
-    df3 = df2.drop(df2.columns[[14, 13, 10, 7, 6, 3, 1, 0]], axis=1, inplace=True)
-
-    # Set number of decimals
-    df2.update(df2[['Number of Treatments']].astype(float))
-    df2.update(df2[['Number of Treatments']].applymap('{:,.0f}'.format))
-
-    # get rid of "NaN"
-    df3 = df2.replace(np.nan, '', regex=True)
-
-    return df3
-
-
 # Set conditions
-def conditions():
-
-    # get current date
-    global today
-    today = datetime.date.today()
+def conditions(today, df3):
 
     # get dates coming within the next 2 weeks
     global upcoming_dates
@@ -294,7 +251,7 @@ def save_location():
 
 
 # Save Excel file, close shelfFile, and print done
-def save_file():
+def save_file(today):
 
     # open shelf file to retrieve desired directory
     shelf = shelve.open('Therapist Info')
@@ -318,7 +275,9 @@ def save_file():
 # Define program
 def main():
 
-    open_program()
+    # opening message 
+    print('Hi! This program is designed to output of funded clients.\n'
+          'It can filter by therapist and funder if desired, as well as filter out the unnecessary columns created when you export the excel sheet from JaneApp.\n')
 
     if not os.path.isfile('Therapist Info.dat'):
         print("It looks like this is the first time you've opened this application, "
@@ -346,20 +305,39 @@ def main():
     select_file()
     open_file()
 
+    # create data frame
+    df1 = pd.read_excel(f'{selected_file}')
+
     while True:
         fund_ques = input("Would you like to filter by funder?\nPlease type 'y' for yes or 'n' for no:\n")
         if fund_ques == 'y':
-            sort_by_funder()
+            sort_by_funder(df1)
             break
         elif fund_ques == 'n':
             break
         elif fund_ques != 'y' or 'n':
             print('Invalid selection.')
 
-    sort_by_therapist()
-    arrange_by_date()
-    prettify()
-    conditions()
+    sort_by_therapist(df1)
+
+    # sort by date
+    print('Filtering by date...')
+    df2 = df1.sort_values(by='End Date', ascending=True)
+
+    # hide unnecessary columns
+    df3 = df2.drop(df2.columns[[14, 13, 10, 7, 6, 3, 1, 0]], axis=1, inplace=True)
+
+    # set number of decimals
+    df2.update(df2[['Number of Treatments']].astype(float))
+    df2.update(df2[['Number of Treatments']].applymap('{:,.0f}'.format))
+
+    # get rid of "NaN"
+    df3 = df2.replace(np.nan, '', regex=True)
+
+    # get current date
+    today = datetime.date.today()
+
+    conditions(today, df3)
 
     while True:
         dir_ques = input("Would you like to change where the file is saved to?\n"
@@ -371,11 +349,12 @@ def main():
         elif dir_ques != 'y' or 'n':
             print('Invalid selection.')
 
-    save_file()
+    save_file(today)
 
 
 # Run program
-main()
+if __name__ == __main__:
+    main()
 
 
 # Created by Amira Kadri
