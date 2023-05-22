@@ -2,358 +2,445 @@ import os
 import shelve
 import glob
 from pathlib import Path
-import openpyxl
 import pandas as pd
-from pandas import option_context
 from collections import OrderedDict
 import pyinputplus as pyip
 import numpy as np
 import datetime
-import matplotlib.pyplot as plt
+from openpyxl.utils import get_column_letter
 
 
-# Create shelf file if not exists
-def shelf_file():
+class OpenProgram:
 
-    with shelve.open('Therapist Info') as shelf:
-        d = pyip.inputFilepath("Please input the full path you'd like to save the file to, "
-                               "e.g. /Users/William/Downloads:\n")
+    # Opening message
+    def open_program(self):
+        print('Hi! This program is designed to output of funded clients.\n'
+              'It can filter by therapist and funder if desired, as well as filter out the '
+              'unnecessary columns created when you export the excel sheet from JaneApp.\n')
 
-        # assign variables in shelf file
-        shelf['Directory'] = d
-        t = input("Please input the full therapist's name you'd like to filter by, "
-                  "e.g. William Smith: (this can be changed later) \n")
-        shelf['Therapist Name'] = t
-    print('Saved.\n')
-    # close shelf file
-    shelf.close()
-
-
-# Change therapist to filter by?
-def change_therapist():
-    shelf = shelve.open('Therapist Info')
-    t = input("Please input the full therapist's name you'd like to filter by, e.g. William Smith:\n")
-    shelf['Therapist Name'] = t
-    print('Saved.\n')
-    shelf.close()
-
-
-# Dummy check
-def dummy_check():
-
-    # ensure user knows file location
-    print("The excel file needs to be in the 'Downloads' folder on your computer.")
-    while True:
-        check = input("Please verify that you placed the file in the 'Downloads' "
-                      "folder on your computer by inputting 'y' for yes.\n")
-        if check != 'y':
-            print("PLEASE ENSURE THE EXCEL SPREADSHEET IS LOCATED IN THE 'DOWNLOADS' FOLDER")
-            continue
+        if not os.path.isfile('Therapist Info.dat'):
+            print("It looks like this is the first time you've opened this application, "
+                  "so we're just going to set up a few things.\n")
+            self.shelf_file()
         else:
-            break
+            # open shelf file to retrieve therapist
+            shelf = shelve.open('Therapist Info')
+            therapist_name = str(shelf['Therapist Name'])
+            shelf.close()
+            # same therapist?
+            ther_ques = pyip.inputYesNo(f"Would you still like to filter by {therapist_name}?\n"
+                                        "Please type 'y' for yes or 'n' for no:\n")
+            if ther_ques == 'n' or ther_ques == 'no':
+                self.change_therapist()
+            else:
+                pass
+
+    # Create shelf file if not exists
+    @staticmethod
+    def shelf_file():
+        with shelve.open('Therapist Info') as shelf:
+            d = pyip.inputFilepath("Please input the full path you'd like to save the file to, "
+                                   "e.g. C:\\Users\\William\\Downloads:\n")
+
+            # assign variables in shelf file
+            shelf['Directory'] = d
+            t = input("Please input the full therapist's name you'd like to filter by, "
+                      "e.g. William Smith: (this can be changed later) \n")
+            shelf['Therapist Name'] = t
+        print('Saved.\n')
+        # close shelf file
+        shelf.close()
+
+    # Change therapist to filter by?
+    @staticmethod
+    def change_therapist():
+        shelf = shelve.open('Therapist Info')
+        t = input("Please input the full therapist's name you'd like to filter by, e.g. William Smith:\n")
+        shelf['Therapist Name'] = t
+        print('Saved.\n')
+        shelf.close()
 
 
-# Search pc for files with keywords to open
-def find_files():
+class GetFiles:
 
-    # path
-    global downloads
-    downloads = str(Path.home() / "Downloads")
+    # Store variables
+    def __init__(self):
+        self.downloads = ""
+        self.file_dict = {}
+        self.selected_file = ""
 
-    # find all Excel files in the "Downloads" folder with "Insurance" in the file name
-    file_paths = glob.glob(f"{downloads}//*Insurance*.xls*")
+    # Dummy check
+    @staticmethod
+    def dummy_check():
+        # ensure user knows file location
+        print("The excel file needs to be in the 'Downloads' folder on your computer.")
+        while True:
+            check = input("Please verify that you placed the file in the 'Downloads' "
+                          "folder on your computer by inputting 'y' for yes.\n")
+            if check != 'y':
+                print("PLEASE ENSURE THE EXCEL SPREADSHEET IS LOCATED IN THE 'DOWNLOADS' FOLDER")
+                continue
+            else:
+                break
 
-    # add filenames and paths to dictionary
-    for path in file_paths:
-        file_name = os.path.basename(path)
-        file_dict[file_name] = path
+    # Search pc for files with keywords to open
+    def find_files(self):
+        # path
+        self.downloads = str(Path.home() / "Downloads")
+
+        # find all Excel files in the "Downloads" folder with "Insurance" in the file name
+        file_paths = glob.glob(f"{self.downloads}//*Insurance*.xls*")
+
+        # add filenames and paths to dictionary
+        self.file_dict = {}
+        for path in file_paths:
+            file_name = os.path.basename(path)
+            self.file_dict[file_name] = path
+        return self.file_dict
+
+    # Ensuring file is correct one
+    def select_file(self):
+
+        # add numbers next to files for selection
+        print("Please input the number of the file you would like to open:")
+        for i, file_name in enumerate(self.file_dict.keys()):
+            print(f"{i + 1}. {file_name}")
+
+        # user selects file
+        selection = pyip.inputNum(min=1, max=len(self.file_dict.keys()), blank=False)
+
+        # match file number to filename
+        try:
+            self.selected_file = list(self.file_dict.values())[int(selection) - 1]
+        except IndexError:
+            print('Invalid selection.')
+
+        return self.selected_file
 
 
-# Empty dictionary
-file_dict = {}
+class OpenFile:
 
+    # Store variables
+    def __init__(self, sort2):
+        self.sort2 = sort2
 
-# Ensuring file is correct one
-def select_file():
-
-    # add numbers next to files for selection
-    print("Please input the number of the file you would like to open:")
-    for i, file_name in enumerate(file_dict.keys()):
-        print(f"{i+1}. {file_name}")
-
-    # user selects file
-    selection = pyip.inputNum(min=1, max=len(file_dict.keys()), blank=False)
-
-    # match file number to filename
-    try:
-        global selected_file
-        selected_file = list(file_dict.values())[int(selection)-1]
-    except IndexError:
-        print('Invalid selection.')
-
-
-# Open file
-def open_file():
-
-    # update
-    print(f'Opening {selected_file}...\n')
-
-    # load the Excel file
-    pd.ExcelFile(f"{selected_file}")
-
-    
-# Sort by funder?
-def sort_by_funder(df1):
-
-    # collect insurance providers
-    keyword = 'Insurer'
-    ins = df1[keyword].unique()
-
-    # place keys in funder dictionary
-    funders = {}
-    for i in ins:
-        funders.setdefault(i, 0)
-
-    # sort dictionary alphabetically
-    ordered_funders = OrderedDict(sorted(funders.items()))
-
-    # assign value to each key
-    print('Please input the number of the insurer you would like to filter by.\n')
-    for i, ins in enumerate(ordered_funders.keys()):
-        print(f"{i + 1}. {ins}")
-
-    # user selects funder
-    number = pyip.inputNum(min=1, max=len(ordered_funders.keys()), blank=False)
-    print('\n')
-
-    try:
-        # match number to funder
-        chosen_funder = list(ordered_funders.keys())[int(number) - 1]
-
+    # Open file and create DF
+    def open_file(self):
         # update
-        print(f'Filtering by {chosen_funder}...\n')
+        print(f'Opening {self.sort2.selected_file}...\n')
 
-        # filter by funder
-        df1.drop(df1[df1['Insurer'] != chosen_funder].index, inplace=True)
+        # load the Excel file
+        pd.ExcelFile(f"{self.sort2.selected_file}")
+
+        # create data frame
+        df1 = pd.read_excel(f'{self.sort2.selected_file}')
+
         return df1
 
-    except IndexError:
-        print('Invalid selection.')
+
+class Funder:
+
+    # Store variables
+    def __init__(self, df1):
+        self.df1 = df1
+        self.chosen_funder = ""
+        self.fun = 0
+
+    # Sort by funder?
+    def funder_choice(self):
+        fund_ques = pyip.inputYesNo("Would you like to filter by funder?\nPlease type 'y' for yes or 'n' for no:\n")
+        if fund_ques == 'y' or fund_ques == 'yes':
+            # for file name
+            self.fun = 1
+
+            # collect insurance providers
+            keyword = 'Insurer'
+            ins = self.df1[keyword].unique()
+
+            # place keys in funder dictionary
+            funders = {}
+            for i in ins:
+                funders.setdefault(i, 0)
+
+            # sort dictionary alphabetically
+            ordered_funders = OrderedDict(sorted(funders.items()))
+
+            # assign value to each key
+            print('Please input the number of the insurer you would like to filter by.\n')
+            for i, ins in enumerate(ordered_funders.keys()):
+                print(f"{i + 1}. {ins}")
+
+            # user selects funder
+            number = pyip.inputNum(min=1, max=len(ordered_funders.keys()), blank=False)
+            print('\n')
+
+            # match number to funder
+            self.chosen_funder = list(ordered_funders.keys())[int(number) - 1]
+
+            # update
+            print(f'Filtering by {self.chosen_funder}...\n')
+
+            # filter by funder
+            df2 = self.df1.drop(self.df1[self.df1['Insurer'] != self.chosen_funder].index, inplace=False)
+
+            return df2, self.fun, self.chosen_funder
+
+        if fund_ques == 'n' or fund_ques == 'no':
+            # for file name
+            self.fun = 0
+
+            # copy full funder list
+            df2 = self.df1.copy()
+
+            return df2, self.fun
 
 
-# Filter by therapist and case status
-def sort_by_therapist(df1):
+class Therapist:
 
-    # open shelf file to retrieve therapist
-    shelf = shelve.open('Therapist Info')
-    therapist_name = str(shelf['Therapist Name'])
-    shelf.close()
+    # Store variables
+    def __init__(self, df2):
+        self.df2 = df2
 
-    # update
-    print(f'Filtering by {therapist_name}\n')
+    # Filter by therapist and case status
+    def sort_by_therapist(self):
+        # open shelf file to retrieve therapist
+        shelf = shelve.open('Therapist Info')
+        therapist_name = str(shelf['Therapist Name'])
+        shelf.close()
 
-    # delete other therapists
-    df1.drop(df1[df1['Policy #'] != therapist_name].index, inplace=True)
+        # update
+        print(f'Filtering by {therapist_name}\n')
 
-    # delete closed cases
-    print('Filtering out closed cases...\n')
-    df1.drop(df1[df1['Status'] != 'Open'].index, inplace=True)
+        # delete other therapists
+        df2 = self.df2[0]
+        df2.drop(df2[df2['Policy #'] != therapist_name].index, inplace=True)
 
-    # print number of cases
-    case_number = len(df1.index)
-    print(f'There are {case_number} cases in this list.\n')
+        # delete closed cases
+        print('Filtering out closed cases...\n')
+        df3 = df2.drop(df2[df2['Status'] != 'Open'].index, inplace=False)
 
+        # print number of cases
+        case_number = len(df3.index)
+        print(f'There are {case_number} cases in this list.\n')
 
-# Set conditions
-def conditions(today, df3):
-
-    # get dates coming within the next 2 weeks
-    global upcoming_dates
-    upcoming_dates = []
-
-    for i in range(-14, 14):
-        date_add = today + datetime.timedelta(days=i)
-        date = date_add.strftime("%Y-%m-%d")
-        upcoming_dates.append(date)
-
-    # remove str values from column
-    df3['Approved Visits'] = df3['Adjuster'].str.split(' ').str[0]
-
-    # convert columns to int
-    df3['Approved Visits'] = df3['Approved Visits'].astype('int')
-    df3['Number of Treatments'] = df3['Number of Treatments'].astype('int')
-
-    # get remaining visits
-    df3['Remaining Visits'] = df3['Approved Visits'] - df3['Number of Treatments']
-    df3['Remaining Visits'] = df3['Remaining Visits'].astype('int')
-
-    # get cases with <5 visits remaining
-    global limited_visits
-    limited_visits = []
-
-    for index, row in df3.iterrows():
-        if row['Remaining Visits'] < 6:
-            limited_visits.append(row['Remaining Visits'])
-
-    # Delete redundant column
-    df3.drop(df3.columns[[4]], axis=1, inplace=True)
-
-    return df3
+        return df3
 
 
-# Create table
-def render_table(data, col_width=None, row_height=0.6, header_color='#40466e', row_colors=['#f1f1f2', 'w'], edge_color='w', bbox=[0, 0, 1, 1], header_columns=0, ax=None, **kwargs):
+class Date:
 
-    # set parameters for table
-    if ax is None:
-        size = (np.array(data.shape[::-1]) + np.array([0, 1])) * np.array([col_width, row_height])
-        fig, ax = plt.subplots(figsize=size)
-        ax.axis('off')
-    mpl_table = ax.table(cellText=data.values, bbox=bbox, colLabels=data.columns, **kwargs)
-    mpl_table.auto_set_font_size(True)
+    # Store variables
+    def __init__(self, df3):
+        self.df3 = df3
 
-    # set colours
-    for k, cell in mpl_table._cells.items():
-        cell.set_edgecolor(edge_color)
-        if k[0] == 0 or k[1] < header_columns:
-            cell.set_text_props(weight='bold', color='w')
-            cell.set_facecolor(header_color)
+    # Sort by date
+    def arrange_by_date(self):
+        # update
+        print('Filtering by date...')
+
+        # sort dates
+        df4 = self.df3.sort_values(by='End Date', ascending=True, inplace=False)
+
+        return df4
+
+
+class Tidy:
+
+    # Store variables
+    def __init__(self, df4):
+        self.df4 = df4
+
+    # Tidying up file
+    def prettify(self):
+        # hide unnecessary columns
+        self.df4.drop(self.df4.columns[[14, 13, 11, 10, 7, 6, 3, 1, 0]], axis=1, inplace=True)
+
+        # Set number of decimals
+        self.df4.update(self.df4[['Number of Treatments']].astype(float))
+        self.df4.update(self.df4[['Number of Treatments']].applymap('{:,.0f}'.format))
+
+        # get rid of "NaN"
+        df5 = self.df4.replace(np.nan, '', regex=True, inplace=False)
+
+        return df5
+
+
+class ConditionSet:
+
+    # Store variables
+    def __init__(self, df5):
+        self.df5 = df5
+        self.today = ""
+        self.upcoming_dates = []
+        self.limited_visits = []
+
+    # Set conditions
+    def conditions(self):
+        # get current date
+        self.today = datetime.date.today()
+
+        # get dates coming within the next 2 weeks
+        self.upcoming_dates = []
+
+        for i in range(-14, 14):
+            date_add = self.today + datetime.timedelta(days=i)
+            date = date_add.strftime("%Y-%m-%d")
+            self.upcoming_dates.append(date)
+
+        # remove str values from column
+        self.df5['Approved Visits'] = self.df5['Adjuster'].str.split(' ').str[0]
+
+        # convert columns to int
+        self.df5['Approved Visits'] = self.df5['Approved Visits'].apply(
+            lambda x: int(x) if x != 'nan' else 0)
+        self.df5['Number of Treatments'] = self.df5['Number of Treatments'].apply(
+            lambda x: int(x) if x != 'nan' else 0)
+
+        # get remaining visits
+        self.df5['Remaining Visits'] = self.df5['Approved Visits'] - self.df5['Number of Treatments']
+        self.df5['Remaining Visits'] = self.df5['Remaining Visits'].astype(int)
+
+        # Add notes column
+        self.df5['Notes'] = np.nan
+
+        # get cases with <5 visits remaining
+        self.limited_visits = self.df5[self.df5['Remaining Visits'] < 6]['Remaining Visits'].tolist()
+
+        # Delete redundant column
+        df6 = self.df5.drop(self.df5.columns[[4]], axis=1, inplace=False)
+
+        return df6, self.today, self.upcoming_dates, self.limited_visits
+
+
+class SaveLoc:
+
+    # Store variables
+    def __init__(self, sort4, sort8):
+        self.sort4 = sort4
+        self.sort8 = sort8
+        self.name = ""
+        self.dirs = ""
+
+    # Change save location?
+    def save_location(self):
+        dir_ques = pyip.inputYesNo("Would you like to change where the file is saved to?\n"
+                                   "Please type 'y' for yes or 'n' for no:\n")
+        if dir_ques == 'y' or dir_ques == 'yes':
+            # ask where to save file
+            d = pyip.inputFilepath("Please input the full path you'd like to save the file to, "
+                                   "e.g. C:\\Users\\William\\Downloads:\n")
+            # save shelf file
+            shelf = shelve.open('Therapist Info')
+            shelf['Directory'] = d
+            shelf.close()
+            self.get_name()
         else:
-            cell.set_facecolor(row_colors[k[0] % len(row_colors)])
+            self.get_name()
 
-    # highlight cells based on date
-    for i in range(len(df3)):   # row position
-        for j in range(len(df3.columns)):   # column position
-            if df3.iloc[i, j] in upcoming_dates:
-                mpl_table.get_celld()[(i + 1, j)].set_text_props(weight='bold', color='r')
+    # Save Excel file, close shelfFile, and print done
+    def get_name(self):
+        # open shelf file to retrieve desired directory
+        shelf = shelve.open('Therapist Info')
+        self.dirs = shelf['Directory']
+        therapist_name = shelf['Therapist Name']
+        shelf.close()
 
-    # highlight cells based on remaining visits
-    for i in range(len(df3)):
-        for j in range(len(df3.columns)):
-            if df3.iloc[i, j] in limited_visits:
-                mpl_table.get_celld()[(i + 1, j)].set_text_props(weight='bold', color='r')
+        # path and name for image
+        if self.sort4.fun == 1:
+            self.name = str(f'{self.dirs}\\\\{self.sort4.chosen_funder} '
+                            f'Funded Clients - {therapist_name} - {self.sort8.today}.xls')
+        else:
+            self.name = str(f'{self.dirs}\\\\Funded Clients - {therapist_name} - {self.sort8.today}.xls')
 
-    # return data
-    return ax.get_figure(), ax
-
-
-# Change save location?
-def save_location():
-
-    # ask where to save file
-    d = pyip.inputFilepath("Please input the full path you'd like to save the file to, "
-                           "e.g. /Users/William/Downloads:\n")
-
-    # save shelf file
-    shelf = shelve.open('Therapist Info')
-    shelf['Directory'] = d
-    shelf.close()
+        return self.name, self.dirs
 
 
-# Save Excel file, close shelfFile, and print done
-def save_file(today):
+class HighlightAndSave:
 
-    # open shelf file to retrieve desired directory
-    shelf = shelve.open('Therapist Info')
-    dirs = shelf['Directory']
-    therapist_name = shelf['Therapist Name']
-    shelf.close()
+    # Store variables
+    def __init__(self, sort8, sort9, df6):
+        self.df6 = df6
+        self.sort8 = sort8
+        self.sort9 = sort9
 
-    # path and name for image
-    image_name = str(f'{dirs}\\\\Funded Clients - {therapist_name} - {today}.png')
+    # Highlight cells based on conditions
+    def highlight_cells(self, val):
+        yellow = 'background-color: yellow'
+        white = 'background-color: white'
+        styles = []
+        for cell in val:
+            if cell in self.sort8.limited_visits or cell in self.sort8.upcoming_dates:
+                styles.append(yellow)
+            else:
+                styles.append(white)
+        return styles
 
-    # create figure
-    fig, ax = render_table(df3, header_columns=0, col_width=2.0)
+    # Apply highlight and save file
+    def apply(self):
+        columns = ['End Date', 'Remaining Visits']
+        df6 = self.df6[0]
+        df7 = df6.style.apply(self.highlight_cells, subset=pd.IndexSlice[:, columns])
+        df7.to_excel(f'{self.sort9.name}', engine='openpyxl', index=False, sheet_name='Clients')
 
-    # save
-    fig.savefig(image_name)
+        # create a pandas ExcelWriter object
+        excel_path = f'{self.sort9.name}'
+        writer = pd.ExcelWriter(excel_path, engine='openpyxl')
 
-    # update
-    print(f'Done! File saved to {dirs}')
+        # write the styled DataFrame to the Excel file
+        df7.to_excel(writer, index=False, sheet_name='Clients')
+
+        # access the workbook and worksheet objects
+        workbook = writer.book
+        worksheet = workbook['Clients']
+
+        # set the column width for all columns in the worksheet
+        column_width = 22
+        for i, col in enumerate(df7.columns):
+            column_letter = get_column_letter(i + 1)
+            worksheet.column_dimensions[column_letter].width = column_width
+
+        # save the Excel file
+        writer.close()
+        print(f'Done! File saved to {self.sort9.dirs}.')
 
 
 # Define program
 def main():
 
-    # opening message 
-    print('Hi! This program is designed to output of funded clients.\n'
-          'It can filter by therapist and funder if desired, as well as filter out the unnecessary columns created when you export the excel sheet from JaneApp.\n')
+    Sort1 = OpenProgram()
+    Sort1.open_program()
 
-    if not os.path.isfile('Therapist Info.dat'):
-        print("It looks like this is the first time you've opened this application, "
-              "so we're just going to set up a few things.\n")
-        shelf_file()
+    Sort2 = GetFiles()
+    Sort2.dummy_check()
+    Sort2.find_files()
+    Sort2.select_file()
 
-    # open shelf file to retrieve therapist
-    shelf = shelve.open('Therapist Info')
-    therapist_name = str(shelf['Therapist Name'])
-    shelf.close()
+    Sort3 = OpenFile(Sort2)
+    df1 = Sort3.open_file()
 
-    while True:
-        ther_ques = input(f"Would you still like to filter by {therapist_name}?\n"
-                          "Please type 'y' for yes or 'n' for no:\n")
-        if ther_ques == 'n':
-            change_therapist()
-            break
-        elif ther_ques == 'y':
-            break
-        elif ther_ques != 'y' or 'n':
-            print('Invalid selection.')
+    Sort4 = Funder(df1)
+    df2 = Sort4.funder_choice()
 
-    dummy_check()
-    find_files()
-    select_file()
-    open_file()
+    Sort5 = Therapist(df2)
+    df3 = Sort5.sort_by_therapist()
 
-    # create data frame
-    df1 = pd.read_excel(f'{selected_file}')
+    Sort6 = Date(df3)
+    df4 = Sort6.arrange_by_date()
 
-    while True:
-        fund_ques = input("Would you like to filter by funder?\nPlease type 'y' for yes or 'n' for no:\n")
-        if fund_ques == 'y':
-            sort_by_funder(df1)
-            break
-        elif fund_ques == 'n':
-            break
-        elif fund_ques != 'y' or 'n':
-            print('Invalid selection.')
+    Sort7 = Tidy(df4)
+    df5 = Sort7.prettify()
 
-    sort_by_therapist(df1)
+    Sort8 = ConditionSet(df5)
+    df6 = Sort8.conditions()
 
-    # sort by date
-    print('Filtering by date...')
-    df2 = df1.sort_values(by='End Date', ascending=True)
+    Sort9 = SaveLoc(Sort4, Sort8)
+    Sort9.save_location()
 
-    # hide unnecessary columns
-    df3 = df2.drop(df2.columns[[14, 13, 10, 7, 6, 3, 1, 0]], axis=1, inplace=True)
-
-    # set number of decimals
-    df2.update(df2[['Number of Treatments']].astype(float))
-    df2.update(df2[['Number of Treatments']].applymap('{:,.0f}'.format))
-
-    # get rid of "NaN"
-    df3 = df2.replace(np.nan, '', regex=True)
-
-    # get current date
-    today = datetime.date.today()
-
-    conditions(today, df3)
-
-    while True:
-        dir_ques = input("Would you like to change where the file is saved to?\n"
-                         "Please type 'y' for yes or 'n' for no:\n")
-        if dir_ques == 'y':
-            save_location()
-        elif dir_ques == 'n':
-            break
-        elif dir_ques != 'y' or 'n':
-            print('Invalid selection.')
-
-    save_file(today)
+    Sort10 = HighlightAndSave(Sort8, Sort9, df6)
+    Sort10.apply()
 
 
 # Run program
-if __name__ == __main__:
+if __name__ == "__main__":
     main()
 
 
